@@ -32,6 +32,7 @@ Build config file for agent OpenTelemetry Collector
 {{- $values := deepCopy .Values.agentCollector | mustMergeOverwrite (deepCopy .Values)  }}
 {{- $data := dict "Values" $values | mustMergeOverwrite (deepCopy .) }}
 {{- $config := include "opentelemetry-collector.baseConfig" $data | fromYaml }}
+{{- $config := include "opentelemetry-collector.agent.containerLogsConfig" $data | fromYaml | mustMergeOverwrite $config }}
 {{- $config := include "opentelemetry-collector.agentConfigOverride" $data | fromYaml | mustMergeOverwrite $config }}
 {{- .Values.agentCollector.configOverride | mustMergeOverwrite $config | toYaml }}
 {{- end }}
@@ -119,5 +120,118 @@ service:
       exporters: [otlp]
     traces:
       exporters: [otlp]
+{{- end }}
+{{- end }}
+
+{{- define "opentelemetry-collector.agent.containerLogsConfig" -}}
+{{- if .Values.agentCollector.containerLogs.enabled }}
+receivers:
+  filelog:
+    include: [ /var/log/pods/*/*/*.log ]
+    {{- if not .Values.agentCollector.containerLogs.includeAgentLogs }}
+    exclude: [ /var/log/pods/{{ .Release.Namespace }}_{{ include "opentelemetry-collector.fullname" . }}-agent-*_*/{{ .Chart.Name }}/*.log ]
+    {{- end }}
+    start_at: beginning
+    include_file_path: true
+    include_file_name: false
+    operators:
+      {{- if eq .Values.agentCollector.containerLogs.containerRunTime "cri-o" }}
+      # Parse CRI-O format
+      - type: regex_parser
+        id: parser-crio
+        regex: '^(?P<time>[^ Z]+) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) (?P<log>.*)$'
+        output: extract_metadata_from_filepath
+        timestamp:
+          parse_from: time
+          layout_type: gotime
+          layout: '2006-01-02T15:04:05.000000000-07:00'
+      {{- end }}
+      {{- if eq .Values.agentCollector.containerLogs.containerRunTime "containerd" }}
+      # Parse CRI-Containerd format
+      - type: regex_parser
+        id: parser-containerd
+        regex: '^(?P<time>[^ ^Z]+Z) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) (?P<log>.*)$'
+        output: extract_metadata_from_filepath
+        timestamp:
+          parse_from: time
+          layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+      {{- end }}
+      # Parse Docker format
+      {{- if eq .Values.agentCollector.containerLogs.containerRunTime "docker" }}
+      - type: json_parser
+        id: parser-docker
+        output: extract_metadata_from_filepath
+        timestamp:
+          parse_from: time
+          layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+      {{- end }}
+      # Extract metadata from file path
+      - type: regex_parser
+        id: extract_metadata_from_filepath
+        regex: '^\/var\/log\/pods\/(?P<namespace>[^_]+)_(?P<pod_name>[^_]+)_(?P<uid>[^\/]+)\/(?P<container_name>[^\._]+)\/(?P<run_id>\d+)\.log$'
+        parse_from: $$attributes.file_path
+      # Move out attributes to Attributes
+      - type: metadata
+        attributes:
+          stream: 'EXPR($.stream)'
+          k8s.container.name: 'EXPR($.container_name)'
+          k8s.namespace.name: 'EXPR($.namespace)'
+          k8s.pod.name: 'EXPR($.pod_name)'
+          run_id: 'EXPR($.run_id)'
+          k8s.pod.uid: 'EXPR($.uid)'
+        resource:
+          k8s.pod.uid: 'EXPR($.uid)'
+      # Clean up log record
+      - type: restructure
+        id: clean-up-log-record
+        ops:
+          - remove: logtag
+          - remove: stream
+          - remove: container_name
+          - remove: namespace
+          - remove: pod_name
+          - remove: run_id
+          - remove: uid
+{{- if .Values.agentCollector.containerLogs.enrichK8sMetadata }}
+processors:
+  k8s_tagger:
+    passthrough: false
+    auth_type: "kubeConfig"
+    # pod_association: # TODO: it is not working. 
+    #   - from: resource_attribute
+    #     name: k8s.pod.uid
+    extract:
+      metadata:
+        # extract the following well-known metadata fields
+        - podName
+        - podUID
+        - deployment
+        - cluster
+        - namespace
+        - node
+        - startTime
+      annotations:
+        {{- toYaml .Values.agentCollector.containerLogs.listOfAnnotations | nindent 8 }}
+      labels:
+        {{- toYaml .Values.agentCollector.containerLogs.listOfLabels | nindent 8 }}
+    filter:
+      node_from_env_var: KUBE_NODE_NAME
+{{- end }}
+exporters:
+  {{- toYaml .Values.agentCollector.containerLogs.exporters | nindent 2 }}
+service:
+  pipelines:
+    logs:
+      receivers:
+        - filelog
+      processors:
+        - batch
+        {{- if .Values.agentCollector.containerLogs.enrichK8sMetadata }}
+        - k8s_tagger
+        {{- end }}
+      exporters:
+        {{- range $key, $exporterData := .Values.agentCollector.containerLogs.exporters }}
+        - {{ $key }}
+        {{- end }}
 {{- end }}
 {{- end }}

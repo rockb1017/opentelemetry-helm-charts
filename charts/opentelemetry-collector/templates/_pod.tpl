@@ -26,9 +26,6 @@ containers:
       - name: {{ $key }}
         containerPort: {{ $port.containerPort }}
         protocol: {{ $port.protocol }}
-        {{- if and $.isAgent $port.hostPort }}
-        hostPort: {{ $port.hostPort }}
-        {{- end }}
       {{- end }}
       {{- end }}
     env:
@@ -37,17 +34,22 @@ containers:
           fieldRef:
             apiVersion: v1
             fieldPath: status.podIP
+      - name: KUBE_NODE_NAME
+        valueFrom:
+          fieldRef:
+            apiVersion: v1
+            fieldPath: spec.nodeName
       {{- with .Values.extraEnvs }}
       {{- . | toYaml | nindent 6 }}
       {{- end }}
-    livenessProbe:
-      httpGet:
-        path: /
-        port: 13133
-    readinessProbe:
-      httpGet:
-        path: /
-        port: 13133
+    # livenessProbe: # TODO: does not work. it keeps killing pod. 
+    #   httpGet:
+    #     path: /
+    #     port: 13133
+    # readinessProbe:
+    #   httpGet:
+    #     path: /
+    #     port: 13133
     resources:
       {{- toYaml .Values.resources | nindent 6 }}
     volumeMounts:

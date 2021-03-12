@@ -39,6 +39,14 @@ config:
     extensions:
       - health_check
     pipelines:
+      logs:
+        exporters:
+          - logging
+        processors:
+          - memory_limiter
+          - batch
+        receivers:
+          - filelog
       metrics:
         exporters:
           - logging
@@ -93,7 +101,15 @@ tolerations: []
 affinity: {}
 
 extraEnvs: []
-extraHostPathMounts: []
+extraHostPathMounts:
+  - name: varlog
+    hostPath: /var/log
+    mountPath: /var/log
+    readOnly: true
+  - name: varlibdockercontainers
+    hostPath: /var/lib/docker/containers
+    mountPath: /var/lib/docker/containers
+    readOnly: true
 
 # Configuration for ports, shared between agentCollector, standaloneCollector and service.
 # Can be overridden here or for agentCollector and standaloneCollector independently.
@@ -102,30 +118,55 @@ ports:
     enabled: true
     containerPort: 4317
     servicePort: 4317
-    hostPort: 4317
     protocol: TCP
   jaeger-thrift:
     enabled: true
     containerPort: 14268
     servicePort: 14268
-    hostPort: 14268
     protocol: TCP
   jaeger-grpc:
     enabled: true
     containerPort: 14250
     servicePort: 14250
-    hostPort: 14250
     protocol: TCP
   zipkin:
     enabled: true
     containerPort: 9411
     servicePort: 9411
-    hostPort: 9411
     protocol: TCP
 
 # Configuration for agent OpenTelemetry Collector daemonset, enabled by default
 agentCollector:
   enabled: true
+
+  containerLogs:
+    enabled: true
+    # Container runtime. One of `docker`, `cri-o`, or `containerd`
+    containerRunTime: ""
+    includeAgentLogs: false
+    enrichK8sMetadata: true
+    listOfAnnotations: []
+    listOfLabels: []
+
+    # Exporters for container logs.
+    # https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter
+    # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter
+    exporters:
+      # # Example of sending logs to splunk
+      # splunk_hec:
+      #   token: "00000000-0000-0000-0000-0000000000000"
+      #   endpoint: "https://splunk:8088/services/collector"
+      #   source: "otel"
+      #   sourcetype: "otel"
+      #   index: "k8s_logs"
+      #   max_connections: 100
+      #   disable_compression: false
+      #   timeout: 10s
+      #   insecure_skip_verify: true
+      #   sending_queue:
+      #     enabled: true
+      #     num_consumers: 2
+      #     queue_size: 10
 
   resources:
     limits:
