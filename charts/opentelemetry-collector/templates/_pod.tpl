@@ -21,9 +21,6 @@ containers:
     image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
     imagePullPolicy: {{ .Values.image.pullPolicy }}
     ports:
-      - name: health
-        containerPort: 13133
-        protocol: TCP 
       {{- range $key, $port := .Values.ports }}
       {{- if $port.enabled }}
       - name: {{ $key }}
@@ -45,7 +42,7 @@ containers:
       {{- with .Values.extraEnvs }}
       {{- . | toYaml | nindent 6 }}
       {{- end }}
-    # livenessProbe:
+    # livenessProbe: # TODO: does not work. it keeps killing pod. 
     #   httpGet:
     #     path: /
     #     port: 13133
