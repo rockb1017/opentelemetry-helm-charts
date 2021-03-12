@@ -148,7 +148,7 @@ agentCollector:
     listOfAnnotations: []
     listOfLabels: []
 
-    # Exporters for container logs. 
+    # Exporters for container logs.
     # https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter
     exporters:
