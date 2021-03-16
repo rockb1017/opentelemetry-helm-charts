@@ -225,7 +225,7 @@ service:
       receivers:
         - filelog
       processors:
-        - batch
+        #- batch
         {{- if .Values.agentCollector.containerLogs.enrichK8sMetadata }}
         - k8s_tagger
         {{- end }}
