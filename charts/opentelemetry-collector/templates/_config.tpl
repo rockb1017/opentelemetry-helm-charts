@@ -180,7 +180,7 @@ receivers:
           run_id: 'EXPR($.run_id)'
           k8s.pod.uid: 'EXPR($.uid)'
         resource:
-          k8s.pod.uid: 'EXPR($.uid)'
+          k8spoduid: 'EXPR($.uid)'
       # Clean up log record
       - type: restructure
         id: clean-up-log-record
@@ -197,17 +197,16 @@ processors:
   k8s_tagger:
     passthrough: false
     auth_type: "kubeConfig"
-    # pod_association: # TODO: it is not working. 
-    #   - from: resource_attribute
-    #     name: k8s.pod.uid
+    pod_association:
+      - from: resource_attribute
+        name: k8spoduid
     extract:
       metadata:
         # extract the following well-known metadata fields
-        - podName
-        - podUID
+        #- podUID
         - deployment
         - cluster
-        - namespace
+        #- namespace
         - node
         - startTime
       annotations:
@@ -216,6 +215,7 @@ processors:
         {{- toYaml .Values.agentCollector.containerLogs.listOfLabels | nindent 8 }}
     filter:
       node_from_env_var: KUBE_NODE_NAME
+
 {{- end }}
 exporters:
   {{- toYaml .Values.agentCollector.containerLogs.exporters | nindent 2 }}
@@ -225,7 +225,7 @@ service:
       receivers:
         - filelog
       processors:
-        #- batch
+        - batch
         {{- if .Values.agentCollector.containerLogs.enrichK8sMetadata }}
         - k8s_tagger
         {{- end }}
